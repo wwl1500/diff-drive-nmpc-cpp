@@ -2,4 +2,8 @@ build/
 results/*.csv
 results/*.png
 results_nmpc_python/
+results_nmpc_cpp/
 .venv/
+__pycache__/
+acados_generated/
+acados_ocp.json
