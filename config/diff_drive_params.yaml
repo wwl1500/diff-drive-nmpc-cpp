@@ -1,0 +1,24 @@
+diff_drive_nmpc_node:
+  ros__parameters:
+    controller_type: "nmpc"
+    trajectory_type: "circle"
+    dt: 0.05
+    horizon_steps: 20
+    frame_id: "odom"
+    child_frame_id: "base_link"
+    circle_radius: 2.0
+    circle_period: 20.0
+    eight_amplitude: 2.0
+    eight_period: 20.0
+    sine_forward_velocity: 0.3
+    sine_amplitude: 1.0
+    sine_omega: 0.5
+
+diff_drive_sim_node:
+  ros__parameters:
+    dt: 0.05
+    initial_x: 2.0
+    initial_y: -0.2
+    initial_theta: 0.0
+    frame_id: "odom"
+    child_frame_id: "base_link"

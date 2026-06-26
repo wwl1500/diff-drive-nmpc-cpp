@@ -80,3 +80,54 @@ target_compile_options(diff_drive_core PRIVATE -Wall -Wextra -Wpedantic)
 add_executable(diff_drive_sim src/main.cpp)
 target_link_libraries(diff_drive_sim PRIVATE diff_drive_core)
 target_compile_options(diff_drive_sim PRIVATE -Wall -Wextra -Wpedantic)
+
+# --- ROS2 / ament 检测 ---
+find_package(ament_cmake QUIET)
+if(ament_cmake_FOUND)
+  # RPATH 设置（acados 共享库运行时可找到）
+  set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+
+  find_package(rclcpp REQUIRED)
+  find_package(nav_msgs REQUIRED)
+  find_package(geometry_msgs REQUIRED)
+  find_package(tf2_ros REQUIRED)
+  find_package(tf2_msgs REQUIRED)
+  find_package(visualization_msgs REQUIRED)
+
+  # 控制节点
+  add_executable(diff_drive_nmpc_node src/ros2/diff_drive_nmpc_node.cpp)
+  target_link_libraries(diff_drive_nmpc_node PRIVATE
+    diff_drive_core
+    rclcpp::rclcpp
+    nav_msgs::nav_msgs__rosidl_typesupport_cpp
+    geometry_msgs::geometry_msgs__rosidl_typesupport_cpp
+    tf2_ros::tf2_ros
+    tf2_msgs::tf2_msgs__rosidl_typesupport_cpp
+    visualization_msgs::visualization_msgs__rosidl_typesupport_cpp)
+
+  # 仿真节点
+  add_executable(diff_drive_sim_node src/ros2/diff_drive_sim_node.cpp)
+  target_link_libraries(diff_drive_sim_node PRIVATE
+    diff_drive_core
+    rclcpp::rclcpp
+    nav_msgs::nav_msgs__rosidl_typesupport_cpp
+    geometry_msgs::geometry_msgs__rosidl_typesupport_cpp
+    tf2_ros::tf2_ros
+    tf2_msgs::tf2_msgs__rosidl_typesupport_cpp)
+
+  # 安装
+  install(TARGETS diff_drive_nmpc_node diff_drive_sim_node diff_drive_sim
+          DESTINATION lib/${PROJECT_NAME})
+  install(DIRECTORY launch/ DESTINATION share/${PROJECT_NAME}/launch)
+  install(DIRECTORY config/ DESTINATION share/${PROJECT_NAME}/config)
+  install(DIRECTORY urdf/   DESTINATION share/${PROJECT_NAME}/urdf)
+
+  # acados 环境钩子
+  if(ENABLE_NMPC)
+    configure_file(ament_env_hooks/${PROJECT_NAME}.dsv.in
+                   ${PROJECT_BINARY_DIR}/${PROJECT_NAME}.dsv @ONLY)
+    ament_environment_hooks("${PROJECT_BINARY_DIR}/${PROJECT_NAME}.dsv")
+  endif()
+
+  ament_package()
+endif()

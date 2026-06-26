@@ -10,6 +10,7 @@
 - acados 生成的 C 求解器
 - C++ `NmpcController` 封装
 - CSV 数据记录、求解时间统计和 PP/NMPC 对比可视化
+- ROS2 Jazzy 扩展（控制节点 + 仿真节点 + rviz2 可视化）
 
 详细实现笔记见：`docs/acados_nmpc_and_visualization_notes.md`。
 
@@ -25,6 +26,7 @@
 - 轨迹、控制量、误差、NMPC 求解时间 CSV 记录
 - 单控制器绘图：轨迹、误差、控制输入
 - PP vs NMPC 对比绘图：误差对比、求解时间、综合指标柱状图
+- ROS2 Jazzy 扩展：控制节点、仿真节点、launch 文件、rviz2 可视化
 
 ---
 
@@ -45,7 +47,16 @@ export LD_LIBRARY_PATH=$ACADOS_SOURCE_PATH/lib:$LD_LIBRARY_PATH
 
 运行 `diff_drive_sim` 前必须设置 `LD_LIBRARY_PATH`，否则可能找不到 `libhpipm.so`、`libblasfeo.so` 等动态库。
 
-### 2.2 Python 环境
+### 2.2 ROS2（可选）
+
+ROS2 扩展需要 Jazzy 桌面版安装（`/opt/ros/jazzy/`）。不安装 ROS2 时纯 CMake 构建不受影响。
+
+依赖的 ROS2 包：
+
+- `rclcpp`、`nav_msgs`、`geometry_msgs`、`tf2_ros`、`visualization_msgs`
+- 运行时：`robot_state_publisher`、`rviz2`、`launch_ros`
+
+### 2.3 Python 环境
 
 Python 虚拟环境：`.venv`
 
@@ -68,6 +79,8 @@ source .venv/bin/activate
 
 ## 3. 构建
 
+### 3.1 纯 CMake 构建
+
 ```bash
 export ACADOS_SOURCE_PATH=/home/wwlwwl/acados
 cmake -S . -B build -DACADOS_SOURCE_PATH=$ACADOS_SOURCE_PATH
@@ -79,6 +92,19 @@ cmake --build build
 ```bash
 cmake -S . -B build -DENABLE_NMPC=OFF
 cmake --build build
+```
+
+### 3.2 colcon 构建（ROS2）
+
+```bash
+mkdir -p ~/ros2_ws/src
+ln -s ~/diff-drive-nmpc-cpp ~/ros2_ws/src/diff_drive_nmpc_cpp
+cd ~/ros2_ws
+source /opt/ros/jazzy/setup.bash
+export ACADOS_SOURCE_PATH=~/acados
+colcon build --packages-select diff_drive_nmpc_cpp \
+  --cmake-args -DACADOS_SOURCE_PATH=$ACADOS_SOURCE_PATH
+source install/setup.bash
 ```
 
 ---
@@ -323,6 +349,7 @@ tf = 1.0 s
 ```text
 .
 ├── CMakeLists.txt
+├── package.xml                 # ROS2 包清单（colcon 构建用）
 ├── CLAUDE.md
 ├── README.md
 ├── include/
@@ -340,11 +367,25 @@ tf = 1.0 s
 │   ├── main.cpp
 │   ├── nmpc_controller.cpp
 │   ├── pure_pursuit_controller.cpp
-│   └── reference_generator.cpp
+│   ├── reference_generator.cpp
+│   └── ros2/
+│       ├── diff_drive_nmpc_node.cpp    # ROS2 控制节点
+│       └── diff_drive_sim_node.cpp     # ROS2 仿真节点
+├── launch/
+│   ├── controller_only.launch.py       # 实机用
+│   └── sim_with_rviz.launch.py         # 仿真测试
+├── config/
+│   ├── diff_drive_params.yaml          # ROS2 默认参数
+│   └── diff_drive.rviz                 # RViz2 配置
+├── urdf/
+│   └── diff_drive.urdf                 # 差速车 URDF
+├── ament_env_hooks/
+│   └── diff_drive_nmpc_cpp.dsv.in      # acados LD_LIBRARY_PATH 钩子
 ├── scripts/
 │   ├── generate_acados_solver.py
 │   ├── plot_comparison.py
-│   └── plot_results.py
+│   ├── plot_results.py
+│   └── run_experiments.py
 ├── prototype/
 │   ├── nmpc_casadi.py
 │   └── requirements.txt
@@ -353,7 +394,8 @@ tf = 1.0 s
 ├── acados_generated/       # 生成文件，gitignore
 ├── results/                # PP 输出，gitignore 部分文件
 ├── results_nmpc_cpp/       # C++ NMPC 输出，gitignore
-└── results_nmpc_python/    # Python NMPC 输出，gitignore
+├── results_nmpc_python/    # Python NMPC 输出，gitignore
+└── results_experiments/    # 批量实验结果，gitignore
 ```
 
 ---
@@ -442,8 +484,65 @@ Pure Pursuit 的求解时间字段留空。
 
 ---
 
-## 14. 后续计划
+## 14. ROS2 扩展（第六步）
+
+项目根目录即 ROS2 包，采用双构建模式：`find_package(ament_cmake QUIET)` 自动检测 ROS2 环境，未安装 ROS2 时纯 CMake 构建不受影响。
+
+### 14.1 节点架构
+
+```text
+参考轨迹（内部生成）──→ diff_drive_nmpc_node ──→ /cmd_vel ──→ diff_drive_sim_node
+                              ↑                                              │
+                            /odom ←──────────────────────────────────────────┘
+```
+
+| 节点 | 订阅 | 发布 | 说明 |
+|------|------|------|------|
+| `diff_drive_nmpc_node` | `/odom` | `/cmd_vel`、`/reference_path`、`/robot_path` | NMPC / PurePursuit 控制 |
+| `diff_drive_sim_node` | `/cmd_vel` | `/odom` + TF | DiffDriveModel 植物模拟 |
+
+控制节点可单独用于实机（订阅外部里程计），仿真节点仅用于离线测试。
+
+### 14.2 运行
+
+```bash
+# colcon 构建（参照 3.2 节）
+source ~/ros2_ws/install/setup.bash
+export LD_LIBRARY_PATH=$HOME/acados/lib:$LD_LIBRARY_PATH
+
+# 仿真测试（默认 NMPC + 圆轨迹）
+ros2 launch diff_drive_nmpc_cpp sim_with_rviz.launch.py
+
+# 切换控制器和轨迹
+ros2 launch diff_drive_nmpc_cpp sim_with_rviz.launch.py \
+  controller_type:=pure_pursuit trajectory_type:=eight
+
+# 关闭 rviz2
+ros2 launch diff_drive_nmpc_cpp sim_with_rviz.launch.py use_rviz:=false
+
+# 实机用（仅控制节点，需外部发布 /odom）
+ros2 launch diff_drive_nmpc_cpp controller_only.launch.py controller_type:=nmpc
+```
+
+### 14.3 ROS2 参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `controller_type` | `nmpc` | `nmpc` 或 `pure_pursuit` |
+| `trajectory_type` | `circle` | `circle` / `eight` / `sine` |
+| `dt` | `0.05` | 控制周期 [s] |
+| `horizon_steps` | `20` | NMPC 预测步数 |
+| `circle_radius` | `2.0` | 圆形轨迹半径 [m] |
+| `circle_period` | `20.0` | 圆形轨迹周期 [s] |
+| `sine_amplitude` | `1.0` | 正弦幅度 [m] |
+| `sine_omega` | `0.5` | 正弦频率 [rad/s] |
+| `frame_id` | `odom` | 固定坐标系 |
+| `child_frame_id` | `base_link` | 机器人坐标系 |
+
+---
+
+## 15. 后续计划
 
 - 调参比较 `SQP_RTI` 与 `SQP`
 - 添加障碍物约束
-- 后续扩展到 ROS2 / Gazebo
+- 接入 Gazebo 物理仿真

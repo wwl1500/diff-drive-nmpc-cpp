@@ -8,3 +8,6 @@ __pycache__/
 acados_generated/
 acados_ocp.json
 results_experiments/
+install/
+log/
+colcon.meta

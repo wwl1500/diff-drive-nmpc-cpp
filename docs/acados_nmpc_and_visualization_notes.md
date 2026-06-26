@@ -717,8 +717,8 @@ cos(theta) - cos(theta_ref)
 
 ### 12.4 下一步建议
 
-1. 对 circle/eight/sine 做更系统的指标统计表。
-2. 将求解时间指标写入 summary CSV，方便后续报告引用。
+1. ~~对 circle/eight/sine 做更系统的指标统计表。~~ ✅ 已在第五步批量实验脚本中完成。
+2. ~~将求解时间指标写入 summary CSV，方便后续报告引用。~~ ✅ 已在 `results_experiments/summary.csv` 中完成。
 3. 增加障碍物约束，进入避障 NMPC。
 4. 比较 `SQP_RTI` 与 `SQP` 的精度/耗时差异。
 5. 将 `LD_LIBRARY_PATH` 写入项目运行说明或提供 `scripts/run_with_acados_env.sh`。
