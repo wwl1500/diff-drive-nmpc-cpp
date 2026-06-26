@@ -2,7 +2,7 @@
 
 基于 C++ 与 acados 的差速移动机器人 NMPC 轨迹跟踪与避障控制。
 
-当前阶段实现的是纯 C++17 仿真框架和 Pure Pursuit baseline，后续再接入 Python/CasADi NMPC 原型、acados 求解器、ROS2 和 Gazebo。
+当前阶段实现的是纯 C++17 仿真框架、Pure Pursuit baseline，以及 Python/CasADi NMPC 原型；后续再接入 acados 求解器、ROS2 和 Gazebo。
 
 ## 当前功能
 
@@ -12,6 +12,7 @@
 - Pure Pursuit 轨迹跟踪控制器
 - CSV 数据记录
 - Python/matplotlib 绘图脚本
+- Python/CasADi NMPC 原型
 
 ## 运动学模型
 
@@ -94,13 +95,53 @@ error.csv: time,ex,ey,etheta,position_error
 python3 scripts/plot_results.py
 ```
 
-脚本会生成：
+也可以指定输出目录：
+
+```bash
+python3 scripts/plot_results.py results_nmpc_python/circle
+```
+
+脚本会在指定输出目录生成：
 
 ```text
-results/trajectory_plot.png
-results/error_plot.png
-results/control_plot.png
+<output_dir>/trajectory_plot.png
+<output_dir>/error_plot.png
+<output_dir>/control_plot.png
 ```
+
+## Python + CasADi NMPC 原型
+
+安装依赖：
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r prototype/requirements.txt
+```
+
+运行 NMPC 原型：
+
+```bash
+python3 prototype/nmpc_casadi.py circle
+python3 prototype/nmpc_casadi.py eight
+python3 prototype/nmpc_casadi.py sine
+```
+
+默认输出目录：
+
+```text
+results_nmpc_python/circle
+results_nmpc_python/eight
+results_nmpc_python/sine
+```
+
+绘制 NMPC 输出：
+
+```bash
+python3 scripts/plot_results.py results_nmpc_python/circle
+```
+
+原型保持与 C++ baseline 相同的状态、控制、参考、horizon 和 CSV 语义：`horizon_steps = N` 时参考序列长度为 `N+1`，每步只执行第一个 NMPC 控制量。
 
 ## 项目结构
 
@@ -123,12 +164,15 @@ results/control_plot.png
 │   └── main.cpp
 ├── scripts/
 │   └── plot_results.py
+├── prototype/
+│   ├── nmpc_casadi.py
+│   └── requirements.txt
 └── results/
 ```
 
 ## 后续计划
 
-- Python + CasADi 实现 NMPC 原型
+- 基于 Python + CasADi 原型调参并验证 circle/eight/sine 跟踪效果
 - C++ 封装 NMPCController
 - 接入 acados 生成的 C 求解器
 - 加入输入约束和障碍物约束实验

@@ -1,3 +1,5 @@
 build/
 results/*.csv
 results/*.png
+results_nmpc_python/
+.venv/
