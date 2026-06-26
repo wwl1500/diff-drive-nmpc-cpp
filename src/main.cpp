@@ -69,9 +69,9 @@ int main(int argc, char** argv) {
         if (argc > 2) {
             sim_config.controller_type = parseControllerType(argv[2]);
         }
-
-        // NMPC 输出到独立目录
-        if (sim_config.controller_type == ControllerType::NMPC) {
+        if (argc > 3) {
+            sim_config.output_dir = argv[3];
+        } else if (sim_config.controller_type == ControllerType::NMPC) {
             sim_config.output_dir = std::string("results_nmpc_cpp/") + trajectoryName(sim_config.trajectory_type);
         }
 
@@ -144,7 +144,7 @@ int main(int argc, char** argv) {
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "Error: " << error.what() << '\n';
-        std::cerr << "Usage: diff_drive_sim [circle|eight|sine] [pp|nmpc]\n";
+        std::cerr << "Usage: diff_drive_sim [circle|eight|sine] [pp|nmpc] [output_dir]\n";
         return 1;
     }
 }

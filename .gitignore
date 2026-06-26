@@ -7,3 +7,4 @@ results_nmpc_cpp/
 __pycache__/
 acados_generated/
 acados_ocp.json
+results_experiments/

@@ -377,10 +377,73 @@ NMPC 平均位置误差 ≈ 0.0041 m
 
 ---
 
-## 13. 后续计划
+## 13. 第五步：批量实验设计
 
-- 对 circle/eight/sine 生成统一 summary CSV
+为便于在 `circle/eight/sine` 三类轨迹上系统对比 Pure Pursuit 与 NMPC 控制器，项目提供了批量实验脚本，可一键运行全部组合并生成统一 `summary.csv` 与对比图。
+
+### 运行方式
+
+```bash
+export ACADOS_SOURCE_PATH=~/acados
+export LD_LIBRARY_PATH=$ACADOS_SOURCE_PATH/lib:$LD_LIBRARY_PATH
+
+# 构建
+cmake --build build
+
+# 运行全部实验
+python3 scripts/run_experiments.py --output results_experiments
+
+# 仅重新生成图表和 summary（跳过仿真）
+python3 scripts/run_experiments.py --output results_experiments --skip-run
+
+# 仅运行仿真并生成 summary（跳过绘图）
+python3 scripts/run_experiments.py --output results_experiments --skip-plots
+```
+
+仿真入口也支持指定输出目录（可用于任意单组实验）：
+
+```bash
+./build/diff_drive_sim circle pp results_experiments/circle/pp
+./build/diff_drive_sim circle nmpc results_experiments/circle/nmpc
+```
+
+### 输出结构
+
+```text
+results_experiments/
+  circle/
+    pp/             # PP 仿真 CSV + 单控制器图
+    nmpc/           # NMPC 仿真 CSV + 单控制器图
+    comparison/     # PP vs NMPC 对比图
+  eight/
+    pp/ nmpc/ comparison/
+  sine/
+    pp/ nmpc/ comparison/
+  summary.csv       # 全部实验的统一指标表
+```
+
+### summary.csv 字段说明
+
+每行一组 `trajectory + controller`：
+
+| 字段 | 说明 |
+|------|------|
+| `mean_position_error` | 平均位置误差 [m] |
+| `rms_position_error` | RMS 位置误差 [m] |
+| `max_position_error` | 最大位置误差 [m] |
+| `mean_abs_theta_error` | 平均绝对角度误差 [rad] |
+| `rms_theta_error` | RMS 角度误差 [rad] |
+| `max_abs_theta_error` | 最大绝对角度误差 [rad] |
+| `solve_time_mean_ms` | NMPC 平均求解时间 [ms] |
+| `solve_time_p95_ms` | NMPC 求解时间 P95 [ms] |
+| `solve_failure_count` | NMPC 求解失败次数 |
+
+Pure Pursuit 的求解时间字段留空。
+
+---
+
+## 14. 后续计划
+
 - 调参比较 `SQP_RTI` 与 `SQP`
 - 添加障碍物约束
-- 与 Pure Pursuit 做更完整的定量报告
 - 后续扩展到 ROS2 / Gazebo

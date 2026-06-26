@@ -26,6 +26,37 @@ def load_csv(path: Path) -> dict[str, np.ndarray]:
     return {k: np.array(v) for k, v in rows.items()}
 
 
+def compute_tracking_metrics(result_dir: Path):
+    err = load_csv(result_dir / "error.csv")
+    position_error = err["position_error"]
+    theta_error = err["etheta"]
+    abs_theta_error = np.abs(theta_error)
+    return {
+        "mean_position_error": float(np.mean(position_error)),
+        "rms_position_error": float(np.sqrt(np.mean(position_error**2))),
+        "max_position_error": float(np.max(position_error)),
+        "mean_abs_theta_error": float(np.mean(abs_theta_error)),
+        "rms_theta_error": float(np.sqrt(np.mean(theta_error**2))),
+        "max_abs_theta_error": float(np.max(abs_theta_error)),
+    }
+
+
+def compute_solve_time_metrics(nmpc_dir: Path):
+    data = load_csv(nmpc_dir / "solve_time.csv")
+    solve_times = data["solve_time_ms"]
+    solve_ok = data["solve_ok"]
+    failed = solve_ok < 0.5
+    return {
+        "solve_time_mean_ms": float(np.mean(solve_times)),
+        "solve_time_median_ms": float(np.median(solve_times)),
+        "solve_time_p95_ms": float(np.percentile(solve_times, 95)),
+        "solve_time_p99_ms": float(np.percentile(solve_times, 99)),
+        "solve_time_max_ms": float(np.max(solve_times)),
+        "solve_failure_count": int(np.sum(failed)),
+        "solve_failure_rate": float(np.mean(failed)),
+    }
+
+
 def plot_solve_time(nmpc_dir: Path, output_dir: Path) -> None:
     """图 4：NMPC 求解时间分析。"""
     data = load_csv(nmpc_dir / "solve_time.csv")
@@ -98,24 +129,17 @@ def plot_error_comparison(pp_dir: Path, nmpc_dir: Path, output_dir: Path) -> Non
 
 def plot_bar_comparison(pp_dir: Path, nmpc_dir: Path, output_dir: Path) -> None:
     """图 6：综合对比柱状图。"""
-    pp_err = load_csv(pp_dir / "error.csv")
-    nmpc_err = load_csv(nmpc_dir / "error.csv")
-
-    pp_pos = pp_err["position_error"]
-    nmpc_pos = nmpc_err["position_error"]
-    pp_theta = np.abs(pp_err["etheta"])
-    nmpc_theta = np.abs(nmpc_err["etheta"])
+    pp_metrics = compute_tracking_metrics(pp_dir)
+    nmpc_metrics = compute_tracking_metrics(nmpc_dir)
+    nmpc_solve_metrics = compute_solve_time_metrics(nmpc_dir)
 
     metrics = {
-        "Mean Pos Err [m]": (np.mean(pp_pos), np.mean(nmpc_pos)),
-        "RMS Pos Err [m]": (np.sqrt(np.mean(pp_pos**2)), np.sqrt(np.mean(nmpc_pos**2))),
-        "Max Pos Err [m]": (np.max(pp_pos), np.max(nmpc_pos)),
-        "Mean |Theta| Err [rad]": (np.mean(pp_theta), np.mean(nmpc_theta)),
+        "Mean Pos Err [m]": (pp_metrics["mean_position_error"], nmpc_metrics["mean_position_error"]),
+        "RMS Pos Err [m]": (pp_metrics["rms_position_error"], nmpc_metrics["rms_position_error"]),
+        "Max Pos Err [m]": (pp_metrics["max_position_error"], nmpc_metrics["max_position_error"]),
+        "Mean |Theta| Err [rad]": (pp_metrics["mean_abs_theta_error"], nmpc_metrics["mean_abs_theta_error"]),
+        "Mean Solve Time [ms]": (0.0, nmpc_solve_metrics["solve_time_mean_ms"]),
     }
-
-    # 求解时间（仅 NMPC）
-    nmpc_solve = load_csv(nmpc_dir / "solve_time.csv")
-    metrics["Mean Solve Time [ms]"] = (0.0, np.mean(nmpc_solve["solve_time_ms"]))
 
     labels = list(metrics.keys())
     pp_vals = [v[0] for v in metrics.values()]
