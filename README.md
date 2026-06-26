@@ -1,20 +1,249 @@
 # diff-drive-nmpc-cpp
 
-基于 C++ 与 acados 的差速移动机器人 NMPC 轨迹跟踪与避障控制。
+基于 C++17 与 acados 的差速移动机器人 NMPC 轨迹跟踪控制项目。
 
-当前阶段实现的是纯 C++17 仿真框架、Pure Pursuit baseline，以及 Python/CasADi NMPC 原型；后续再接入 acados 求解器、ROS2 和 Gazebo。
+项目当前包含：
 
-## 当前功能
+- 纯 C++ 差速小车仿真框架
+- Pure Pursuit baseline 控制器
+- Python + CasADi NMPC 原型
+- acados 生成的 C 求解器
+- C++ `NmpcController` 封装
+- CSV 数据记录、求解时间统计和 PP/NMPC 对比可视化
+
+详细实现笔记见：`docs/acados_nmpc_and_visualization_notes.md`。
+
+---
+
+## 1. 功能概览
 
 - 差速小车离散运动学模型
 - 圆轨迹、八字轨迹、S 型轨迹参考生成
-- 控制器基类接口
-- Pure Pursuit 轨迹跟踪控制器
-- CSV 数据记录
-- Python/matplotlib 绘图脚本
-- Python/CasADi NMPC 原型
+- `ControllerBase` 统一控制器接口
+- `PurePursuitController` baseline
+- `NmpcController`（C++ 调用 acados C 求解器）
+- 轨迹、控制量、误差、NMPC 求解时间 CSV 记录
+- 单控制器绘图：轨迹、误差、控制输入
+- PP vs NMPC 对比绘图：误差对比、求解时间、综合指标柱状图
 
-## 运动学模型
+---
+
+## 2. 环境依赖
+
+### 2.1 C++ 与构建工具
+
+- CMake >= 3.16
+- C++17 编译器
+- acados 源码编译安装
+
+本机默认 acados 安装路径：
+
+```bash
+export ACADOS_SOURCE_PATH=/home/wwlwwl/acados
+export LD_LIBRARY_PATH=$ACADOS_SOURCE_PATH/lib:$LD_LIBRARY_PATH
+```
+
+运行 `diff_drive_sim` 前必须设置 `LD_LIBRARY_PATH`，否则可能找不到 `libhpipm.so`、`libblasfeo.so` 等动态库。
+
+### 2.2 Python 环境
+
+Python 虚拟环境：`.venv`
+
+常用依赖：
+
+- `casadi`
+- `acados_template`
+- `numpy`
+- `matplotlib`
+- `scipy`
+- `jinja2`
+
+激活环境：
+
+```bash
+source .venv/bin/activate
+```
+
+---
+
+## 3. 构建
+
+```bash
+export ACADOS_SOURCE_PATH=/home/wwlwwl/acados
+cmake -S . -B build -DACADOS_SOURCE_PATH=$ACADOS_SOURCE_PATH
+cmake --build build
+```
+
+如果只想构建不含 NMPC 的版本：
+
+```bash
+cmake -S . -B build -DENABLE_NMPC=OFF
+cmake --build build
+```
+
+---
+
+## 4. 运行 C++ 仿真
+
+命令格式：
+
+```bash
+./build/diff_drive_sim [circle|eight|sine] [pp|nmpc]
+```
+
+示例：
+
+```bash
+export LD_LIBRARY_PATH=/home/wwlwwl/acados/lib:$LD_LIBRARY_PATH
+
+# Pure Pursuit baseline
+./build/diff_drive_sim circle pp
+./build/diff_drive_sim eight pp
+./build/diff_drive_sim sine pp
+
+# C++ acados NMPC
+./build/diff_drive_sim circle nmpc
+./build/diff_drive_sim eight nmpc
+./build/diff_drive_sim sine nmpc
+```
+
+默认参数：
+
+```text
+trajectory = circle
+controller = pp
+```
+
+输出目录：
+
+```text
+Pure Pursuit: results/
+NMPC:         results_nmpc_cpp/<trajectory>/
+```
+
+---
+
+## 5. 生成 acados C 求解器
+
+通常只有修改 OCP 参数、代价函数、约束或模型后才需要重新生成。
+
+```bash
+source .venv/bin/activate
+export ACADOS_SOURCE_PATH=/home/wwlwwl/acados
+export LD_LIBRARY_PATH=$ACADOS_SOURCE_PATH/lib:$LD_LIBRARY_PATH
+python3 scripts/generate_acados_solver.py
+```
+
+生成目录：
+
+```text
+acados_generated/
+```
+
+本项目的 `CMakeLists.txt` 会直接编译生成目录中的 `.c` 文件，不要求单独构建共享库。
+
+如需单独编译 acados 生成的共享库：
+
+```bash
+cd acados_generated
+make shared_lib
+```
+
+---
+
+## 6. Python + CasADi NMPC 原型
+
+原型入口：
+
+```text
+prototype/nmpc_casadi.py
+```
+
+运行：
+
+```bash
+source .venv/bin/activate
+python3 prototype/nmpc_casadi.py circle
+python3 prototype/nmpc_casadi.py eight
+python3 prototype/nmpc_casadi.py sine
+```
+
+默认输出目录：
+
+```text
+results_nmpc_python/circle
+results_nmpc_python/eight
+results_nmpc_python/sine
+```
+
+原型用于验证建模、权重和控制效果；C++ NMPC 使用 acados 生成求解器实现实时调用。
+
+---
+
+## 7. CSV 输出
+
+通用输出：
+
+```text
+trajectory.csv: time,x,y,theta,x_ref,y_ref,theta_ref
+control.csv:    time,v,omega
+error.csv:      time,ex,ey,etheta,position_error
+```
+
+NMPC 额外输出：
+
+```text
+solve_time.csv: time,solve_time_ms,solve_ok
+```
+
+`solve_time.csv` 只在 NMPC 模式下生成；Pure Pursuit 模式不会生成空文件。
+
+---
+
+## 8. 绘图
+
+### 8.1 单控制器结果绘图
+
+```bash
+python3 scripts/plot_results.py results_nmpc_cpp/circle
+```
+
+生成：
+
+```text
+trajectory_plot.png
+error_plot.png
+control_plot.png
+```
+
+### 8.2 PP vs NMPC 对比图
+
+先运行 PP 和 NMPC：
+
+```bash
+export LD_LIBRARY_PATH=/home/wwlwwl/acados/lib:$LD_LIBRARY_PATH
+./build/diff_drive_sim circle pp
+./build/diff_drive_sim circle nmpc
+```
+
+再生成对比图：
+
+```bash
+source .venv/bin/activate
+python3 scripts/plot_comparison.py results results_nmpc_cpp/circle
+```
+
+生成：
+
+```text
+solve_time_plot.png
+error_comparison_plot.png
+comparison_bar_plot.png
+```
+
+---
+
+## 9. 运动学模型
 
 状态量：
 
@@ -48,133 +277,110 @@ omega_min = -1.5 rad/s
 omega_max = 1.5 rad/s
 ```
 
-## 构建
+---
 
-```bash
-cmake -S . -B build
-cmake --build build
-```
+## 10. NMPC OCP 摘要
 
-## 运行仿真
-
-默认运行圆轨迹：
-
-```bash
-./build/diff_drive_sim
-```
-
-指定轨迹类型：
-
-```bash
-./build/diff_drive_sim circle
-./build/diff_drive_sim eight
-./build/diff_drive_sim sine
-```
-
-仿真结果输出到 `results/`：
+C++ acados NMPC 使用增广状态：
 
 ```text
-results/trajectory.csv
-results/control.csv
-results/error.csv
+x_aug = [px, py, theta, v_prev, omega_prev]
+u = [v, omega]
 ```
 
-CSV 字段：
+使用 `v_prev` 与 `omega_prev` 表达控制增量惩罚：
 
 ```text
-trajectory.csv: time,x,y,theta,x_ref,y_ref,theta_ref
-control.csv: time,v,omega
-error.csv: time,ex,ey,etheta,position_error
+v(k) - v(k-1)
+omega(k) - omega(k-1)
 ```
 
-## 绘图
-
-需要 Python 和 matplotlib：
-
-```bash
-python3 scripts/plot_results.py
-```
-
-也可以指定输出目录：
-
-```bash
-python3 scripts/plot_results.py results_nmpc_python/circle
-```
-
-脚本会在指定输出目录生成：
+主要权重：
 
 ```text
-<output_dir>/trajectory_plot.png
-<output_dir>/error_plot.png
-<output_dir>/control_plot.png
+q_pos = 20.0
+q_theta = 2.0
+r_v = 0.1
+r_omega = 0.05
+rd_v = 0.5
+rd_omega = 0.1
+q_terminal_pos = 40.0
+q_terminal_theta = 4.0
 ```
 
-## Python + CasADi NMPC 原型
-
-安装依赖：
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r prototype/requirements.txt
-```
-
-运行 NMPC 原型：
-
-```bash
-python3 prototype/nmpc_casadi.py circle
-python3 prototype/nmpc_casadi.py eight
-python3 prototype/nmpc_casadi.py sine
-```
-
-默认输出目录：
+求解器配置：
 
 ```text
-results_nmpc_python/circle
-results_nmpc_python/eight
-results_nmpc_python/sine
+SQP_RTI + PARTIAL_CONDENSING_HPIPM
+N = 20
+tf = 1.0 s
 ```
 
-绘制 NMPC 输出：
+---
 
-```bash
-python3 scripts/plot_results.py results_nmpc_python/circle
-```
-
-原型保持与 C++ baseline 相同的状态、控制、参考、horizon 和 CSV 语义：`horizon_steps = N` 时参考序列长度为 `N+1`，每步只执行第一个 NMPC 控制量。
-
-## 项目结构
+## 11. 项目结构
 
 ```text
 .
 ├── CMakeLists.txt
+├── CLAUDE.md
+├── README.md
 ├── include/
 │   ├── common_types.hpp
-│   ├── math_utils.hpp
-│   ├── diff_drive_model.hpp
-│   ├── reference_generator.hpp
 │   ├── controller_base.hpp
+│   ├── csv_logger.hpp
+│   ├── diff_drive_model.hpp
+│   ├── math_utils.hpp
+│   ├── nmpc_controller.hpp
 │   ├── pure_pursuit_controller.hpp
-│   └── csv_logger.hpp
+│   └── reference_generator.hpp
 ├── src/
-│   ├── diff_drive_model.cpp
-│   ├── reference_generator.cpp
-│   ├── pure_pursuit_controller.cpp
 │   ├── csv_logger.cpp
-│   └── main.cpp
+│   ├── diff_drive_model.cpp
+│   ├── main.cpp
+│   ├── nmpc_controller.cpp
+│   ├── pure_pursuit_controller.cpp
+│   └── reference_generator.cpp
 ├── scripts/
+│   ├── generate_acados_solver.py
+│   ├── plot_comparison.py
 │   └── plot_results.py
 ├── prototype/
 │   ├── nmpc_casadi.py
 │   └── requirements.txt
-└── results/
+├── docs/
+│   └── acados_nmpc_and_visualization_notes.md
+├── acados_generated/       # 生成文件，gitignore
+├── results/                # PP 输出，gitignore 部分文件
+├── results_nmpc_cpp/       # C++ NMPC 输出，gitignore
+└── results_nmpc_python/    # Python NMPC 输出，gitignore
 ```
 
-## 后续计划
+---
 
-- 基于 Python + CasADi 原型调参并验证 circle/eight/sine 跟踪效果
-- C++ 封装 NMPCController
-- 接入 acados 生成的 C 求解器
-- 加入输入约束和障碍物约束实验
-- 与 Pure Pursuit 做定量对比
-- 扩展到 ROS2 / Gazebo
+## 12. 当前验证结果
+
+已验证：
+
+```text
+circle NMPC: solves=801, failures=0
+eight  NMPC: solves=801, failures=0
+sine   NMPC: solves=801, failures=0
+```
+
+circle 轨迹对比中：
+
+```text
+Pure Pursuit 平均位置误差 ≈ 1.6446 m
+NMPC 平均位置误差 ≈ 0.0041 m
+```
+
+---
+
+## 13. 后续计划
+
+- 对 circle/eight/sine 生成统一 summary CSV
+- 调参比较 `SQP_RTI` 与 `SQP`
+- 添加障碍物约束
+- 与 Pure Pursuit 做更完整的定量报告
+- 后续扩展到 ROS2 / Gazebo
